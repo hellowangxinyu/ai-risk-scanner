@@ -24,6 +24,12 @@
           <el-tag :type="row.ctype === '个人' ? 'info' : 'primary'" effect="plain">{{ row.ctype }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="授信" width="80">
+        <template #default="{ row }">
+          <el-tag v-if="row.is_credit" type="danger" effect="plain">授信</el-tag>
+          <span v-else style="color:#c0c4cc">—</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="credit_code" label="统一社会信用代码" width="190" show-overflow-tooltip />
       <el-table-column prop="contact" label="联系人" width="110" show-overflow-tooltip />
       <el-table-column prop="note" label="备注" min-width="120" show-overflow-tooltip />
@@ -64,6 +70,10 @@
             <el-radio value="公司">公司</el-radio>
             <el-radio value="个人">个人</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item label="是否授信客户">
+          <el-switch v-model="form.is_credit" active-text="授信" inactive-text="非授信" />
+          <span style="margin-left:10px;color:#909399;font-size:12px">授信客户固定按高风险周期（默认 3 天）扫描，非授信按其扫描结果定周期</span>
         </el-form-item>
         <el-form-item label="统一社会信用代码"><el-input v-model="form.credit_code" /></el-form-item>
         <el-form-item label="联系人"><el-input v-model="form.contact" /></el-form-item>
@@ -145,8 +155,8 @@ async function load(p) {
 
 function openEdit(row) {
   form.value = row
-    ? { ...row }
-    : { id: 0, name: '', ctype: '公司', credit_code: '', contact: '', note: '' }
+    ? { ...row, is_credit: !!row.is_credit }
+    : { id: 0, name: '', ctype: '公司', credit_code: '', contact: '', note: '', is_credit: false }
   editVisible.value = true
 }
 

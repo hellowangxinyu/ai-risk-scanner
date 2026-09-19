@@ -41,11 +41,12 @@ def level_interval(level: str, cycles: dict) -> int:
     return max(int(days), 1)
 
 
-def is_due(last_scan_at: str, last_risk_level: str, today: date, cycles: dict) -> bool:
+def is_due(last_scan_at: str, last_risk_level: str, today: date, cycles: dict, is_credit: bool = False) -> bool:
     """客户扫描到期判定（纯函数）。
 
-    从未扫描 → 到期（视同 30 天档，直接进队列）；
-    否则 last_scan_at + interval(last_risk_level) <= today → 到期。
+    授信客户固定按"高"档间隔扫描（授信敞口需要高频监控）；
+    非授信客户按最近一次扫描结果的风险等级定档，从未扫描或无风险按"无"档。
+    从未扫描一律视为到期。
     """
     if not last_scan_at:
         return True
@@ -53,8 +54,19 @@ def is_due(last_scan_at: str, last_risk_level: str, today: date, cycles: dict) -
         last = datetime.fromisoformat(str(last_scan_at)).date()
     except ValueError:
         return True
-    days = level_interval(last_risk_level or "无", cycles)
+    tier = "高" if is_credit else (last_risk_level or "无")
+    days = level_interval(tier, cycles)
     return (today - last).days >= days
+
+
+def parse_credit_flag(value) -> bool:
+    """解析授信标识：是/1/y/yes/true → True；否/0/n/no/false/空 → False；其他抛 ValueError。"""
+    v = str(value or "").strip().lower()
+    if v in ("是", "1", "y", "yes", "true"):
+        return True
+    if v in ("否", "0", "n", "no", "false", ""):
+        return False
+    raise ValueError("授信标识非法（应为 是/否）")
 
 
 def max_level(levels) -> str:

@@ -13,7 +13,7 @@ from scanner import list_customers_with_due
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
-TEMPLATE_HEADERS = ["名称", "类型", "统一社会信用代码", "联系人", "备注"]
+TEMPLATE_HEADERS = ["名称", "类型", "统一社会信用代码", "联系人", "备注", "是否授信客户"]
 
 
 class CustomerBody(BaseModel):
@@ -23,6 +23,7 @@ class CustomerBody(BaseModel):
     contact: str = ""
     note: str = ""
     org: str = ""
+    is_credit: bool = False
 
 
 def _resolve_org(org: str = "") -> str:
@@ -69,8 +70,8 @@ def create_customer(body: CustomerBody):
     try:
         _check_unique(conn, org, name)
         cur = conn.execute(
-            "INSERT INTO customers(org, name, ctype, credit_code, contact, note) VALUES(?,?,?,?,?,?)",
-            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip()),
+            "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit) VALUES(?,?,?,?,?,?,?)",
+            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(), 1 if body.is_credit else 0),
         )
         conn.commit()
         return {"id": cur.lastrowid}
@@ -92,8 +93,8 @@ def update_customer(cid: int, body: CustomerBody):
         org = _resolve_org(body.org)
         _check_unique(conn, org, name, exclude_id=cid)
         conn.execute(
-            "UPDATE customers SET org=?, name=?, ctype=?, credit_code=?, contact=?, note=? WHERE id=?",
-            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(), cid),
+            "UPDATE customers SET org=?, name=?, ctype=?, credit_code=?, contact=?, note=?, is_credit=? WHERE id=?",
+            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(), 1 if body.is_credit else 0, cid),
         )
         conn.commit()
         return {"ok": True}
@@ -118,8 +119,9 @@ def download_template():
     ws = wb.active
     ws.title = "客户导入"
     ws.append(TEMPLATE_HEADERS)
-    ws.append(["示例建材有限公司", "公司", "91330100XXXXXXXXXX", "张三", "仅作格式示例，导入前请删除本行"])
-    ws.append(["李四", "个人", "", "", "个人客户可不填信用代码"])
+    ws.append(["示例建材有限公司", "公司", "91330100XXXXXXXXXX", "张三", "仅作格式示例，导入前请删除本行", "是"])
+    ws.append(["李四", "个人", "", "", "个人客户可不填信用代码", "否"])
+    ws.append(["示例供应商有限公司", "公司", "", "", "非授信客户按低频周期扫描", "否"])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -133,6 +135,8 @@ def download_template():
 
 def _parse_rows(report: dict, rows_iter, has_header: bool):
     """逐行校验并写入，产出报告。文本导入 has_header=False，每行一个名称。"""
+    from logic import parse_credit_flag
+
     org = _resolve_org()
     conn = db.connect()
     seen_in_file = set()
@@ -144,9 +148,16 @@ def _parse_rows(report: dict, rows_iter, has_header: bool):
                     values.get("联系人"), values.get("备注"),
                 )
                 name = (values.get("名称") or "").strip()
+                if ok:
+                    try:
+                        fields["is_credit"] = 1 if parse_credit_flag(values.get("是否授信客户")) else 0
+                    except ValueError as e:
+                        ok, fields, reason = False, None, str(e)
             else:
                 name = str(values or "").strip()
                 ok, fields, reason = validate_import_row(name, "公司", "", "", "")
+                if ok:
+                    fields["is_credit"] = 0
             if not ok:
                 report["failed"].append({"row": row_no, "name": name, "reason": reason})
                 continue
@@ -160,8 +171,8 @@ def _parse_rows(report: dict, rows_iter, has_header: bool):
                 report["skipped"].append({"name": fields["name"], "reason": "已存在同名客户"})
                 continue
             conn.execute(
-                "INSERT INTO customers(org, name, ctype, credit_code, contact, note) VALUES(?,?,?,?,?,?)",
-                (org, fields["name"], fields["ctype"], fields["credit_code"], fields["contact"], fields["note"]),
+                "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit) VALUES(?,?,?,?,?,?,?)",
+                (org, fields["name"], fields["ctype"], fields["credit_code"], fields["contact"], fields["note"], fields["is_credit"]),
             )
             seen_in_file.add(fields["name"])
             report["success"] += 1

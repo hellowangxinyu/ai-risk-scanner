@@ -11,7 +11,82 @@ from logic import LEVEL_RANK
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
-EXPORT_HEADERS = ["客户名称", "风险类型", "风险等级", "风险标题", "风险描述", "风险日期", "信息来源", "扫描日期"]
+EXPORT_HEADERS = ["客户名称", "是否授信", "客户类型", "风险类型", "风险等级", "风险标题", "风险描述", "风险日期", "信息来源", "扫描日期", "批次"]
+
+
+def _enrich(conn, records: list) -> list:
+    """给风险记录补客户属性列（是否授信/客户类型），用于客户分析；客户已删除时留空。"""
+    for r in records:
+        c = conn.execute(
+            "SELECT ctype, is_credit FROM customers WHERE id=?", (r["customer_id"],)
+        ).fetchone() if r["customer_id"] is not None else None
+        r["ctype"] = c["ctype"] if c else ""
+        r["is_credit"] = "是" if (c and c["is_credit"]) else ("否" if c else "")
+    return records
+
+
+def _build_workbook(records: list) -> io.BytesIO:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "风险台账"
+    ws.append(EXPORT_HEADERS)
+    for r in records:
+        ws.append([
+            r["customer_name"], r.get("is_credit", ""), r.get("ctype", ""),
+            r["risk_type"], r["level"], r["title"], r["description"],
+            r["risk_date"], r["source"], r["scan_date"], r["batch_id"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@router.get("/export")
+def export_risks(
+    view: str = "latest_batch",
+    batch_id: int = 0,
+    level: str = "",
+    risk_type: str = "",
+    q: str = "",
+    date: str = "",
+    full: int = 0,
+):
+    """导出风险台账。
+
+    - date=YYYY-MM-DD：按扫描日期全量导出该日期所有批次的全部风险记录（不套用视图与筛选）；
+    - full=1：全量导出全部历史风险记录；
+    - 两者都不传：按当前视图与筛选条件导出。
+    """
+    conn = db.connect()
+    try:
+        if date or full:
+            where, params = "", []
+            if date:
+                where = "WHERE substr(sb.scan_date, 1, 10) = ?"
+                params = [date]
+            rows = conn.execute(
+                "SELECT rr.*, sb.scan_date AS scan_date FROM risk_records rr "
+                f"JOIN scan_batches sb ON sb.id = rr.batch_id {where} "
+                "ORDER BY sb.scan_date DESC, rr.customer_name, "
+                "CASE rr.level WHEN '高' THEN 0 WHEN '中' THEN 1 ELSE 2 END",
+                params,
+            ).fetchall()
+            records = _enrich(conn, [dict(r) for r in rows])
+        else:
+            raw, _ = _select_records(conn, view, batch_id, level, risk_type, q)
+            records = _enrich(conn, raw)
+    finally:
+        conn.close()
+    buf = _build_workbook(records)
+    filename = urllib.parse.quote(
+        f"风险台账-{date}.xlsx" if date else "风险台账-全部历史.xlsx"
+    )
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 def _select_records(conn, view: str, batch_id: int, level: str, risk_type: str, q: str):
@@ -86,38 +161,3 @@ def list_risks(
         "items": records[start : start + page_size],
         "batch": used_batch,
     }
-
-
-@router.get("/export")
-def export_risks(
-    view: str = "latest_batch",
-    batch_id: int = 0,
-    level: str = "",
-    risk_type: str = "",
-    q: str = "",
-):
-    conn = db.connect()
-    try:
-        records, _ = _select_records(conn, view, batch_id, level, risk_type, q)
-    finally:
-        conn.close()
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "风险台账"
-    ws.append(EXPORT_HEADERS)
-    for r in records:
-        ws.append(
-            [
-                r["customer_name"], r["risk_type"], r["level"], r["title"],
-                r["description"], r["risk_date"], r["source"], r["scan_date"],
-            ]
-        )
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    filename = urllib.parse.quote("风险台账.xlsx")
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
-    )

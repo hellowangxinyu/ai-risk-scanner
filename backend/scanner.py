@@ -20,7 +20,7 @@ def _cycles(settings: dict) -> dict:
 
 
 def list_customers_with_due() -> list:
-    """全部客户 + 到期标记 + 间隔天数（供扫描页与客户页使用）。"""
+    """全部客户 + 到期标记（授信=高档，非授信按扫描等级）+ 所属机构等（供扫描页与客户页使用）。"""
     cycles = _cycles(db.get_settings())
     today = date.today()
     conn = db.connect()
@@ -31,7 +31,7 @@ def list_customers_with_due() -> list:
     out = []
     for r in rows:
         d = dict(r)
-        d["due"] = is_due(d["last_scan_at"], d["last_risk_level"], today, cycles)
+        d["due"] = is_due(d["last_scan_at"], d["last_risk_level"], today, cycles, bool(d["is_credit"]))
         out.append(d)
     return out
 

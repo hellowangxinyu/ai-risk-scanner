@@ -19,7 +19,11 @@
       </el-select>
       <el-input v-model="q" placeholder="搜索客户/标题/描述" clearable style="width: 200px" @keyup.enter="load(1)" @clear="load(1)" />
       <el-button type="primary" @click="load(1)">查询</el-button>
-      <el-button type="success" plain @click="exportExcel">导出 Excel</el-button>
+      <el-divider direction="vertical" />
+      <el-date-picker v-model="exportDate" type="date" value-format="YYYY-MM-DD" placeholder="扫描日期" style="width: 140px" />
+      <el-button type="success" @click="exportByDate">按日期导出</el-button>
+      <el-button type="success" plain @click="exportAll">导出全部历史</el-button>
+      <el-button link type="primary" @click="exportExcel">导出当前筛选</el-button>
     </div>
 
     <el-table :data="items" v-loading="loading" border stripe>
@@ -57,6 +61,7 @@ const batchId = ref(Number(route.query.batch_id) || 0)
 const level = ref('')
 const riskType = ref('')
 const q = ref('')
+const exportDate = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const items = ref([])
@@ -109,10 +114,20 @@ function exportExcel() {
   window.open(`/api/risks/export?${params}`)
 }
 
+function exportByDate() {
+  if (!exportDate.value) return ElMessage.warning('请先选择扫描日期')
+  window.open(`/api/risks/export?date=${exportDate.value}`)
+}
+
+function exportAll() {
+  window.open('/api/risks/export?full=1')
+}
+
 onMounted(async () => {
   try {
     const r = await api.get('/api/scan/batches?limit=100')
     batches.value = r.items
+    exportDate.value = (r.items[0] && r.items[0].scan_date) ? r.items[0].scan_date.slice(0, 10) : ''
   } catch { /* 忽略 */ }
   load(1)
 })

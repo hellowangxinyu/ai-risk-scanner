@@ -74,6 +74,39 @@ def test_due_corrupt_last_scan_at_treated_as_due():
     assert is_due("garbage", "高", date(2026, 9, 19), CYCLES) is True
 
 
+# ---------- 授信客户到期规则 ----------
+
+def test_credit_customer_always_high_tier():
+    # 授信客户：无论上次扫描结果如何，都按高风险档（3 天）
+    assert is_due("2026-09-17", "无", date(2026, 9, 19), CYCLES, is_credit=True) is False
+    assert is_due("2026-09-16", "无", date(2026, 9, 19), CYCLES, is_credit=True) is True
+    assert is_due("2026-09-16", "低", date(2026, 9, 19), CYCLES, is_credit=True) is True
+
+
+def test_non_credit_customer_ignores_high_tier_from_level():
+    # 非授信客户扫出中风险 → 中档 7 天；扫出高风险 → 高档 3 天
+    assert is_due("2026-09-13", "中", date(2026, 9, 19), CYCLES, is_credit=False) is False
+    assert is_due("2026-09-12", "中", date(2026, 9, 19), CYCLES, is_credit=False) is True
+    assert is_due("2026-09-16", "高", date(2026, 9, 19), CYCLES, is_credit=False) is True
+
+
+def test_credit_never_scanned_still_due():
+    assert is_due("", "无", date(2026, 9, 19), CYCLES, is_credit=True) is True
+
+
+def test_parse_credit_flag():
+    from logic import parse_credit_flag
+    assert parse_credit_flag("是") is True and parse_credit_flag("1") is True
+    assert parse_credit_flag("否") is False and parse_credit_flag("") is False
+    assert parse_credit_flag(None) is False
+    try:
+        parse_credit_flag("可能")
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
 # ---------- 风险等级 ----------
 
 def test_max_level():

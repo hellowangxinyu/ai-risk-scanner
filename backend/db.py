@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS customers (
     note TEXT NOT NULL DEFAULT '',
     last_scan_at TEXT NOT NULL DEFAULT '',
     last_risk_level TEXT NOT NULL DEFAULT '',
+    is_credit INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     UNIQUE(org, name)
 );
@@ -106,6 +107,10 @@ def init_db():
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        # 迁移：老库补 is_credit（是否授信客户）列
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()]
+        if "is_credit" not in cols:
+            conn.execute("ALTER TABLE customers ADD COLUMN is_credit INTEGER NOT NULL DEFAULT 0")
         for k, v in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)", (k, str(v))

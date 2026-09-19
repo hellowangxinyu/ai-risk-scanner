@@ -1,7 +1,7 @@
 <template>
   <div>
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px"
-      title="到期判定规则：从未扫描直接到期；其余按上次风险等级定间隔（高风险3天/中风险7天/低·无风险30天，可在系统配置修改）" />
+    <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px" title="到期判定规则：授信客户固定按高风险间隔（默认 3 天）；非授信客户按上次扫描等级定间隔（高 3 天/中 7 天/低·无 30 天，可在系统配置修改）；从未扫描直接到期"
+      description="扫描只处理到期客户，未到期客户不会重复扫描" />
 
     <el-card shadow="never" style="margin-bottom:14px">
       <template #header>
@@ -18,6 +18,12 @@
         @selection-change="(rows) => (selected = rows)">
         <el-table-column type="selection" width="45" :selectable="(row) => !polling" />
         <el-table-column prop="name" label="客户名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="授信" width="70">
+          <template #default="{ row }">
+            <el-tag v-if="row.is_credit" type="danger" effect="plain">授信</el-tag>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="ctype" label="类型" width="70" />
         <el-table-column label="上次扫描" width="160">
           <template #default="{ row }">{{ row.last_scan_at || '从未扫描' }}</template>
