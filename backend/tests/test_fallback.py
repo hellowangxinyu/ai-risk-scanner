@@ -12,7 +12,7 @@ def test_search_failure_degrades(monkeypatch):
 
     monkeypatch.setattr(datasource, "bocha_search", boom)
 
-    def fake_assess(settings, customer, search_results, searched, usage_extra=(0, 0), search_label=""):
+    def fake_assess(settings, customer, search_results, searched, usage_extra=(0, 0), search_label="", prev_titles=None):
         assert searched is False, "搜索失败后应以未联网模式调用 AI"
         assert search_results == []
         return {
@@ -42,7 +42,7 @@ def test_deepseek_search_selected_and_usage_merged(monkeypatch):
 
     monkeypatch.setattr(datasource, "deepseek_search", fake_ds_search)
 
-    def fake_assess(settings, customer, search_results, searched, usage_extra=(0, 0), search_label=""):
+    def fake_assess(settings, customer, search_results, searched, usage_extra=(0, 0), search_label="", prev_titles=None):
         assert searched is True
         assert search_results and search_results[0]["url"] == "u"
         assert usage_extra == (1500, 800), "搜索轮次 Token 应并入统计"

@@ -68,6 +68,86 @@ def parse_credit_flag(value) -> bool:
     raise ValueError("授信标识非法（应为 是/否）")
 
 
+def normalize_risk_title(title: str) -> str:
+    """风险标题归一化：去空白、转小写，用于跨批次匹配同一风险项。"""
+    import re as _re
+
+    return _re.sub(r"\s+", "", str(title or "")).lower()
+
+
+def compute_lifecycle(records: list, latest_valid_batch: dict) -> list:
+    """跨批次聚合同一风险项，生成"风险项生命周期"清单（纯函数）。
+
+    records：风险记录 dict 列表（需含 batch_id, scan_date, customer_id, customer_name,
+             risk_type, level, title, description）；
+    latest_valid_batch：{("id", customer_id): batch_id}，每客户最近一次有效扫描
+             （有风险/无风险）的批次；客户无有效扫描记录时不出现在字典中。
+
+    匹配规则：同一客户 + 同一风险类型 + 标题归一化一致 → 同一风险项。
+    返回聚合项列表（活跃在前、等级高在前）：
+    {customer_id, customer_name, risk_type, level, title, description,
+     first_seen, last_seen, batch_count, status(活跃/已消失)}
+    status：客户最近一次有效扫描批次中仍包含该风险 → 活跃；未包含 → 已消失；
+    客户尚无有效扫描（如最近一次扫描失败）→ 维持活跃。
+    """
+    groups = {}
+    for r in records:
+        cid = r.get("customer_id")
+        ck = ("id", cid) if cid is not None else ("name", r.get("customer_name"))
+        key = (ck, r.get("risk_type"), normalize_risk_title(r.get("title")))
+        g = groups.setdefault(key, {
+            "customer_id": cid,
+            "customer_name": r.get("customer_name"),
+            "risk_type": r.get("risk_type"),
+            "title": r.get("title"),
+            "description": r.get("description"),
+            "level": r.get("level"),
+            "first_seen": r.get("scan_date"),
+            "last_seen": r.get("scan_date"),
+            "batch_count": 0,
+            "batches": set(),
+            "latest_bid": -1,
+        })
+        sd = r.get("scan_date") or ""
+        if sd and (not g["first_seen"] or sd < g["first_seen"]):
+            g["first_seen"] = sd
+        if sd and (not g["last_seen"] or sd > g["last_seen"]):
+            g["last_seen"] = sd
+        g["batch_count"] += 1
+        if r.get("batch_id") is not None:
+            g["batches"].add(r["batch_id"])
+            if r["batch_id"] > g["latest_bid"]:
+                g["latest_bid"] = r["batch_id"]
+                g["level"] = r.get("level")
+                g["title"] = r.get("title")
+                g["description"] = r.get("description")
+    items = []
+    for g in groups.values():
+        cid = g["customer_id"]
+        ck = ("id", cid) if cid is not None else ("name", g["customer_name"])
+        cur = latest_valid_batch.get(ck)
+        status = "活跃" if (cur is None or cur in g["batches"]) else "已消失"
+        items.append({
+            "customer_id": cid,
+            "customer_name": g["customer_name"],
+            "risk_type": g["risk_type"],
+            "level": g["level"],
+            "title": g["title"],
+            "description": g["description"],
+            "first_seen": g["first_seen"],
+            "last_seen": g["last_seen"],
+            "batch_count": g["batch_count"],
+            "status": status,
+        })
+    items.sort(key=lambda x: (
+        0 if x["status"] == "活跃" else 1,
+        LEVEL_RANK.get(x["level"], 9),
+        x["customer_name"],
+        x["title"],
+    ))
+    return items
+
+
 def max_level(levels) -> str:
     """取最高风险等级，空列表返回 ''。"""
     best, best_rank = "", 99

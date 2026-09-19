@@ -86,6 +86,63 @@ def test_parse_credit_flag():
     assert raised
 
 
+# ---------- 风险项生命周期聚合 ----------
+
+def _rec(bid, date, cid, name, rtype, level, title, desc=""):
+    return {"batch_id": bid, "scan_date": date, "customer_id": cid, "customer_name": name,
+            "risk_type": rtype, "level": level, "title": title, "description": desc}
+
+
+def test_lifecycle_merge_across_batches():
+    from logic import compute_lifecycle
+    records = [
+        _rec(1, "2026-09-01", 1, "甲公司", "诉讼", "高", "执行立案"),
+        _rec(2, "2026-09-10", 1, "甲公司", "诉讼", "高", "执行 立案"),  # 空格不同，归一化后同一条
+        _rec(2, "2026-09-10", 1, "甲公司", "工商", "低", "经营异常"),
+        _rec(1, "2026-09-01", 2, "乙公司", "工商", "低", "股东变更"),
+    ]
+    items = compute_lifecycle(records, {("id", 1): 2, ("id", 2): 2})
+    assert len(items) == 3, "甲公司的执行立案两条应合并为一条"
+    merged = [i for i in items if i["customer_name"] == "甲公司" and "执行" in i["title"]][0]
+    assert merged["first_seen"] == "2026-09-01" and merged["last_seen"] == "2026-09-10"
+    assert merged["batch_count"] == 2 and merged["status"] == "活跃"
+    assert all(i["status"] == "活跃" for i in items if i["customer_name"] == "甲公司")
+    # 乙公司的股东变更最近批次未出现 → 已消失，且排在活跃之后
+    gone = [i for i in items if i["customer_name"] == "乙公司"][0]
+    assert gone["status"] == "已消失"
+    assert items[0]["status"] == "活跃" and items[-1]["status"] == "已消失"
+
+
+def test_lifecycle_latest_attributes_win():
+    from logic import compute_lifecycle
+    records = [
+        _rec(1, "2026-09-01", 1, "甲公司", "诉讼", "中", "执行立案", "旧描述"),
+        _rec(2, "2026-09-10", 1, "甲公司", "诉讼", "高", "执行立案", "新描述"),
+    ]
+    items = compute_lifecycle(records, {("id", 1): 2})
+    assert items[0]["level"] == "高" and items[0]["description"] == "新描述"
+
+
+def test_lifecycle_no_valid_scan_stays_active():
+    from logic import compute_lifecycle
+    records = [_rec(1, "2026-09-01", 1, "甲公司", "诉讼", "高", "执行立案")]
+    items = compute_lifecycle(records, {})  # 该客户没有任何有效扫描记录
+    assert items[0]["status"] == "活跃"
+
+
+def test_prompt_includes_previous_titles():
+    from ai_client import build_messages
+    msgs = build_messages(
+        {"name": "甲公司", "ctype": "公司", "credit_code": ""},
+        [], False,
+        prev_titles=[{"risk_type": "诉讼", "title": "执行立案"}],
+    )
+    user_text = msgs[1]["content"]
+    assert "上次扫描发现的风险项" in user_text and "执行立案" in user_text and "沿用相同" in user_text
+    msgs2 = build_messages({"name": "甲公司", "ctype": "公司", "credit_code": ""}, [], False)
+    assert "上次扫描发现的风险项" not in msgs2[1]["content"]
+
+
 # ---------- 风险等级 ----------
 
 def test_max_level():

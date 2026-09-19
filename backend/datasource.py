@@ -24,7 +24,7 @@ class LLMRagSource:
 
     name = "llm"
 
-    def assess(self, customer: dict, settings: dict) -> dict:
+    def assess(self, customer: dict, settings: dict, prev_titles=None) -> dict:
         if not settings.get("ai_api_key"):
             raise ScanError("未配置 AI API Key，请先在系统配置中填写")
         searched = False
@@ -42,7 +42,8 @@ class LLMRagSource:
             except Exception as e:
                 search_note = f"联网搜索失败，已降级为纯模型知识（{e}）"
         result = assess_customer(settings, customer, search_results, searched,
-                                 usage_extra=usage_extra, search_label=provider_label)
+                                 usage_extra=usage_extra, search_label=provider_label,
+                                 prev_titles=prev_titles)
         if search_note:
             result["search_note"] = search_note
             result["mode"] = f"{result['mode']}；{search_note}"
@@ -55,7 +56,7 @@ class McpSource:
 
     name = "mcp"
 
-    def assess(self, customer: dict, settings: dict) -> dict:
+    def assess(self, customer: dict, settings: dict, prev_titles=None) -> dict:
         raise ScanError(
             "MCP 数据源为预留接口：待购买企查查/天眼查 API 套餐后适配，当前请使用 LLM 数据源"
         )

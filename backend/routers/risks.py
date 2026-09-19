@@ -7,11 +7,37 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 import db
-from logic import LEVEL_RANK
+from logic import LEVEL_RANK, compute_lifecycle
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
 EXPORT_HEADERS = ["客户名称", "是否授信", "客户类型", "风险类型", "风险等级", "风险标题", "风险描述", "风险日期", "信息来源", "扫描日期", "批次"]
+LIFECYCLE_HEADERS = ["客户名称", "风险类型", "当前等级", "风险标题", "风险描述", "首次发现", "最近确认", "出现批次数", "状态"]
+
+
+def _latest_valid_batch(conn) -> dict:
+    """每客户最近一次有效扫描（有风险/无风险）的批次，键为 ("id", customer_id)。"""
+    rows = conn.execute(
+        "SELECT customer_id AS cid, MAX(batch_id) AS mb FROM scan_items "
+        "WHERE outcome IN ('有风险','无风险') AND customer_id IS NOT NULL GROUP BY customer_id"
+    ).fetchall()
+    return {("id", r["cid"]): r["mb"] for r in rows}
+
+
+def _lifecycle_items(conn, level: str, risk_type: str, q: str) -> list:
+    rows = conn.execute(
+        "SELECT rr.*, sb.scan_date AS scan_date FROM risk_records rr "
+        "JOIN scan_batches sb ON sb.id = rr.batch_id"
+    ).fetchall()
+    items = compute_lifecycle([dict(r) for r in rows], _latest_valid_batch(conn))
+    if level:
+        items = [i for i in items if i["level"] == level]
+    if risk_type:
+        items = [i for i in items if i["risk_type"] == risk_type]
+    if q.strip():
+        qq = q.strip()
+        items = [i for i in items if qq in i["customer_name"] or qq in i["title"] or qq in (i["description"] or "")]
+    return items
 
 
 def _enrich(conn, records: list) -> list:
@@ -25,13 +51,13 @@ def _enrich(conn, records: list) -> list:
     return records
 
 
-def _build_workbook(records: list) -> io.BytesIO:
+def _build_workbook(records: list, headers=None, rows_builder=None) -> io.BytesIO:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "风险台账"
-    ws.append(EXPORT_HEADERS)
+    ws.append(headers or EXPORT_HEADERS)
     for r in records:
-        ws.append([
+        ws.append(rows_builder(r) if rows_builder else [
             r["customer_name"], r.get("is_credit", ""), r.get("ctype", ""),
             r["risk_type"], r["level"], r["title"], r["description"],
             r["risk_date"], r["source"], r["scan_date"], r["batch_id"],
@@ -54,10 +80,32 @@ def export_risks(
 ):
     """导出风险台账。
 
+    - view=lifecycle：风险项生命周期视图（去重清单，含首次发现/最近确认/出现批次数/状态）；
     - date=YYYY-MM-DD：按扫描日期全量导出该日期所有批次的全部风险记录（不套用视图与筛选）；
     - full=1：全量导出全部历史风险记录；
     - 两者都不传：按当前视图与筛选条件导出。
     """
+    if view == "lifecycle":
+        conn = db.connect()
+        try:
+            items = _lifecycle_items(conn, level, risk_type, q)
+        finally:
+            conn.close()
+        buf = _build_workbook(
+            items, headers=LIFECYCLE_HEADERS,
+            rows_builder=lambda r: [
+                r["customer_name"], r["risk_type"], r["level"], r["title"],
+                r["description"], r["first_seen"], r["last_seen"],
+                r["batch_count"], r["status"],
+            ],
+        )
+        filename = urllib.parse.quote("风险台账-风险项生命周期.xlsx")
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        )
+
     conn = db.connect()
     try:
         if date or full:
@@ -148,6 +196,17 @@ def list_risks(
     page: int = 1,
     page_size: int = 20,
 ):
+    if view == "lifecycle":
+        conn = db.connect()
+        try:
+            items = _lifecycle_items(conn, level, risk_type, q)
+        finally:
+            conn.close()
+        total = len(items)
+        page, page_size = max(page, 1), max(min(page_size, 200), 1)
+        start = (page - 1) * page_size
+        return {"total": total, "items": items[start : start + page_size], "batch": None}
+
     conn = db.connect()
     try:
         records, used_batch = _select_records(conn, view, batch_id, level, risk_type, q)

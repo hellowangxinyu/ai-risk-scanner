@@ -165,11 +165,23 @@ def _scan_customer(item, settings: dict) -> dict:
             cust = conn.execute(
                 "SELECT * FROM customers WHERE id=?", (item["customer_id"],)
             ).fetchone()
+        prev_titles = []
+        if cust is not None:
+            # 上次扫描的风险项标题：注入提示词让模型对仍存在的风险沿用相同标题，
+            # 保证生命周期视图跨批次可关联
+            prev_titles = [
+                dict(r) for r in conn.execute(
+                    "SELECT risk_type, title FROM risk_records WHERE customer_id=? "
+                    "AND batch_id=(SELECT MAX(batch_id) FROM risk_records WHERE customer_id=?) "
+                    "LIMIT 20",
+                    (item["customer_id"], item["customer_id"]),
+                ).fetchall()
+            ]
     finally:
         conn.close()
     if cust is None:
         raise ScanError("客户已不存在（可能在扫描前被删除）")
-    return get_source(settings).assess(dict(cust), settings)
+    return get_source(settings).assess(dict(cust), settings, prev_titles=prev_titles)
 
 
 def _persist_item(batch_id: int, item, result: dict, settings: dict):

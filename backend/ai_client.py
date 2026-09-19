@@ -19,7 +19,7 @@ USER_PROMPT_TMPL = """请评估以下客户当前的风险信息。
 客户名称：{name}
 客户类型：{ctype}
 统一社会信用代码：{credit_code}
-{search_section}
+{prev_section}{search_section}
 评估维度：工商、诉讼、财产冻结、股东变更、股权质押、经营、财务等。
 
 要求：
@@ -33,7 +33,7 @@ USER_PROMPT_TMPL = """请评估以下客户当前的风险信息。
 {{"has_risk": true, "summary": "一句话总结", "risks": [{{"risk_type": "诉讼", "level": "高", "title": "风险标题", "description": "风险描述", "risk_date": "2025-01-01", "source": "来源"}}]}}"""
 
 
-def build_messages(customer: dict, search_results: list, searched: bool):
+def build_messages(customer: dict, search_results: list, searched: bool, prev_titles=None):
     if searched and search_results:
         from search import build_search_block
 
@@ -44,11 +44,20 @@ def build_messages(customer: dict, search_results: list, searched: bool):
         )
     else:
         search_section = ""
+    if prev_titles:
+        lines = [f"{i}. [{t['risk_type']}] {t['title']}" for i, t in enumerate(prev_titles, 1)]
+        prev_section = (
+            "该客户上次扫描发现的风险项如下（若本次确认风险仍然存在，请沿用相同的 risk_type 与 title，"
+            "便于跨批次追踪；若已消失则不要列出）：\n" + "\n".join(lines) + "\n"
+        )
+    else:
+        prev_section = ""
     user = USER_PROMPT_TMPL.format(
         name=customer["name"],
         ctype=customer.get("ctype", "公司"),
         credit_code=customer.get("credit_code") or "未提供",
         search_section=search_section,
+        prev_section=prev_section,
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -121,13 +130,16 @@ def normalize_assessment(parsed: dict, model: str, searched: bool, search_label:
 
 
 def assess_customer(settings: dict, customer: dict, search_results: list, searched: bool,
-                    usage_extra: tuple = (0, 0), search_label: str = "") -> dict:
+                    usage_extra: tuple = (0, 0), search_label: str = "",
+                    prev_titles=None) -> dict:
     """调大模型评估单个客户。失败（网络/HTTP/解析）整体重试一次，仍失败抛 ScanError。
 
     usage_extra：联网搜索轮次消耗的 Token（DeepSeek 原生搜索按模型轮次计费），
     会并入该客户的 Token 统计与费用估算。
+    prev_titles：该客户上次扫描的风险项（risk_type/title），用于提示词引导模型
+    对仍然存在的风险沿用相同标题，保证生命周期视图跨批次可关联。
     """
-    messages = build_messages(customer, search_results, searched)
+    messages = build_messages(customer, search_results, searched, prev_titles)
     model = settings.get("ai_model") or "deepseek-chat"
     label = search_label or "联网搜索"
     last_err = None

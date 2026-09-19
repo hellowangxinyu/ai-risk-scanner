@@ -7,6 +7,7 @@
       <el-radio-group v-model="view" @change="load(1)">
         <el-radio-button value="latest_batch">最新批次</el-radio-button>
         <el-radio-button value="customer_latest">每客户最新状态</el-radio-button>
+        <el-radio-button value="lifecycle">风险项生命周期</el-radio-button>
       </el-radio-group>
       <el-select v-model="batchId" placeholder="切换历史批次" clearable style="width: 230px" @change="onBatchChange">
         <el-option v-for="b in batches" :key="b.id" :value="b.id" :label="`#${b.id} ${b.scan_date}（${b.status}，风险 ${b.risk_count}）`" />
@@ -26,7 +27,7 @@
       <el-button link type="primary" @click="exportExcel">导出当前筛选</el-button>
     </div>
 
-    <el-table :data="items" v-loading="loading" border stripe>
+    <el-table v-if="view !== 'lifecycle'" :data="items" v-loading="loading" border stripe>
       <el-table-column prop="customer_name" label="客户名称" min-width="170" show-overflow-tooltip />
       <el-table-column label="风险类型" width="100">
         <template #default="{ row }"><el-tag effect="plain">{{ row.risk_type }}</el-tag></template>
@@ -41,6 +42,27 @@
       <el-table-column prop="risk_date" label="风险日期" width="100" />
       <el-table-column prop="source" label="信息来源" min-width="150" show-overflow-tooltip />
       <el-table-column prop="scan_date" label="扫描日期" width="160" />
+    </el-table>
+    <el-table v-else :data="items" v-loading="loading" border stripe>
+      <el-table-column prop="customer_name" label="客户名称" min-width="170" show-overflow-tooltip />
+      <el-table-column label="风险类型" width="100">
+        <template #default="{ row }"><el-tag effect="plain">{{ row.risk_type }}</el-tag></template>
+      </el-table-column>
+      <el-table-column label="当前等级" width="90">
+        <template #default="{ row }">
+          <el-tag :color="LEVEL_COLORS[row.level]" style="color:#fff;border:none">{{ row.level }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="title" label="风险标题" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="description" label="风险描述" min-width="240" show-overflow-tooltip />
+      <el-table-column prop="first_seen" label="首次发现" width="160" />
+      <el-table-column prop="last_seen" label="最近确认" width="160" />
+      <el-table-column prop="batch_count" label="出现批次数" width="95" align="center" />
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.status === '活跃' ? 'danger' : 'info'" effect="plain">{{ row.status }}</el-tag>
+        </template>
+      </el-table-column>
     </el-table>
     <el-pagination style="margin-top:14px;justify-content:flex-end" background layout="total, prev, pager, next"
       :total="total" v-model:current-page="page" :page-size="pageSize" @current-change="load()" />
@@ -70,9 +92,11 @@ const batches = ref([])
 const loading = ref(false)
 
 const emptyText = computed(() =>
-  view.value === 'customer_latest'
-    ? '暂无风险记录（最近批次扫出干净的客户不会出现在此视图）'
-    : '当前批次没有风险记录'
+  view.value === 'lifecycle'
+    ? '暂无风险项'
+    : view.value === 'customer_latest'
+      ? '暂无风险记录（最近批次扫出干净的客户不会出现在此视图）'
+      : '当前批次没有风险记录'
 )
 
 async function load(p) {
