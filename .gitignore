@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+backend/data/
+frontend/node_modules/
+frontend/dist/
+server.log
+*.tar.gz
+*.docx
+docs/
+.zcode/
+.DS_Store
+Thumbs.db
