@@ -71,6 +71,9 @@
     <el-card shadow="never" style="margin-bottom:14px">
       <template #header><b>扫描周期（按风险等级分级）</b></template>
       <el-form label-width="130px">
+        <el-form-item>
+          <span style="color:#909399;font-size:12px;line-height:1.6">到期 = 上次扫描时间 + 下方间隔 ≤ 今天。自动扫描与手动扫描都只扫到期客户，未到期客户不会重复扫描、不产生费用</span>
+        </el-form-item>
         <el-form-item label="高风险客户"><el-input-number v-model="form.cycle_high" :min="1" :max="365" /> 天/次</el-form-item>
         <el-form-item label="中风险客户"><el-input-number v-model="form.cycle_mid" :min="1" :max="365" /> 天/次</el-form-item>
         <el-form-item label="低/无风险客户"><el-input-number v-model="form.cycle_low" :min="1" :max="365" /> 天/次</el-form-item>
@@ -78,10 +81,11 @@
     </el-card>
 
     <el-card shadow="never" style="margin-bottom:14px">
-      <template #header><b>每日自动扫描</b></template>
+      <template #header><b>每日自动扫描到期客户</b></template>
       <el-form label-width="130px">
         <el-form-item label="启用自动扫描">
           <el-switch v-model="form.auto_scan_enabled" active-value="1" inactive-value="0" />
+          <span style="margin-left:10px;color:#909399;font-size:12px">每天到点检查到期名单，只扫当天到期的客户；当天没人到期则不产生扫描和费用</span>
         </el-form-item>
         <el-form-item label="扫描时刻">
           <el-time-select v-model="form.auto_scan_time" start="00:00" step="00:30" end="08:30" style="width:130px" />
