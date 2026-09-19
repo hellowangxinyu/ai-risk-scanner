@@ -41,11 +41,10 @@ def level_interval(level: str, cycles: dict) -> int:
     return max(int(days), 1)
 
 
-def is_due(last_scan_at: str, last_risk_level: str, today: date, cycles: dict, is_credit: bool = False) -> bool:
+def is_due(last_scan_at: str, today: date, cycles: dict, is_credit: bool = False) -> bool:
     """客户扫描到期判定（纯函数）。
 
-    授信客户固定按"高"档间隔扫描（授信敞口需要高频监控）；
-    非授信客户按最近一次扫描结果的风险等级定档，从未扫描或无风险按"无"档。
+    客户风险等级由授信状态唯一决定：授信=高（高风险档间隔），非授信=低（低风险档间隔）。
     从未扫描一律视为到期。
     """
     if not last_scan_at:
@@ -54,7 +53,7 @@ def is_due(last_scan_at: str, last_risk_level: str, today: date, cycles: dict, i
         last = datetime.fromisoformat(str(last_scan_at)).date()
     except ValueError:
         return True
-    tier = "高" if is_credit else (last_risk_level or "无")
+    tier = "高" if is_credit else "低"
     days = level_interval(tier, cycles)
     return (today - last).days >= days
 

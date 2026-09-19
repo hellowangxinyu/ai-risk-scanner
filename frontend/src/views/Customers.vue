@@ -36,7 +36,7 @@
       <el-table-column label="上次扫描" width="160">
         <template #default="{ row }">{{ row.last_scan_at || '从未扫描' }}</template>
       </el-table-column>
-      <el-table-column label="上次等级" width="90">
+      <el-table-column label="风险等级" width="90">
         <template #default="{ row }">
           <el-tag v-if="row.last_risk_level" :color="LEVEL_COLORS[row.last_risk_level]" style="color:#fff;border:none">{{ row.last_risk_level }}</el-tag>
           <span v-else>-</span>
@@ -73,7 +73,7 @@
         </el-form-item>
         <el-form-item label="是否授信客户">
           <el-switch v-model="form.is_credit" active-text="授信" inactive-text="非授信" />
-          <span style="margin-left:10px;color:#909399;font-size:12px">授信客户固定按高风险周期（默认 3 天）扫描，非授信按其扫描结果定周期</span>
+          <span style="margin-left:10px;color:#909399;font-size:12px">授信客户风险等级=高（按高风险周期默认 3 天扫描），非授信=低（按低周期默认 30 天）；修改授信状态会同步更新风险等级</span>
         </el-form-item>
         <el-form-item label="统一社会信用代码"><el-input v-model="form.credit_code" /></el-form-item>
         <el-form-item label="联系人"><el-input v-model="form.contact" /></el-form-item>

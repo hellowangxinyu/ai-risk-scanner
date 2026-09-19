@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 import db
 from datasource import get_source
-from logic import ScanError, is_due, max_level
+from logic import ScanError, is_due
 
 LOW_CYCLE_DEFAULT = 30
 
@@ -20,7 +20,7 @@ def _cycles(settings: dict) -> dict:
 
 
 def list_customers_with_due() -> list:
-    """全部客户 + 到期标记（授信=高档，非授信按扫描等级）+ 所属机构等（供扫描页与客户页使用）。"""
+    """全部客户 + 到期标记（授信=高档，非授信=低档）等（供扫描页与客户页使用）。"""
     cycles = _cycles(db.get_settings())
     today = date.today()
     conn = db.connect()
@@ -31,7 +31,7 @@ def list_customers_with_due() -> list:
     out = []
     for r in rows:
         d = dict(r)
-        d["due"] = is_due(d["last_scan_at"], d["last_risk_level"], today, cycles, bool(d["is_credit"]))
+        d["due"] = is_due(d["last_scan_at"], today, cycles, bool(d["is_credit"]))
         out.append(d)
     return out
 
@@ -176,10 +176,11 @@ def _persist_item(batch_id: int, item, result: dict, settings: dict):
     conn = db.connect()
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 客户风险等级由授信状态唯一决定（增删改时同步），扫描只更新扫描时间
         if result["outcome"] in ("有风险", "无风险") and item["customer_id"] is not None:
             conn.execute(
-                "UPDATE customers SET last_scan_at=?, last_risk_level=? WHERE id=?",
-                (now, max_level([r["level"] for r in result["risks"]]) or "无", item["customer_id"]),
+                "UPDATE customers SET last_scan_at=? WHERE id=?",
+                (now, item["customer_id"]),
             )
         if result["outcome"] == "有风险":
             for r in result["risks"]:

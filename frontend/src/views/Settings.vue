@@ -72,10 +72,9 @@
       <template #header><b>扫描周期（按风险等级分级）</b></template>
       <el-form label-width="130px">
         <el-form-item>
-          <span style="color:#909399;font-size:12px;line-height:1.6">到期 = 上次扫描时间 + 间隔 ≤ 今天。<b>授信客户固定按高风险间隔扫描</b>；非授信客户按最近一次扫描结果的风险等级定间隔（从未扫描/无风险按低档）。自动扫描与手动扫描都只扫到期客户，未到期客户不会重复扫描、不产生费用</span>
+          <span style="color:#909399;font-size:12px;line-height:1.6">到期 = 上次扫描时间 + 间隔 ≤ 今天。风险等级由授信状态唯一决定：<b>授信客户=高风险，按高风险间隔扫描；非授信客户=低风险，按低风险间隔扫描</b>（修改授信状态会同步更新客户风险等级）。自动扫描与手动扫描都只扫到期客户，未到期客户不会重复扫描、不产生费用</span>
         </el-form-item>
-        <el-form-item label="高风险客户（授信）"><el-input-number v-model="form.cycle_high" :min="1" :max="365" /> 天/次</el-form-item>
-        <el-form-item label="中风险客户（非授信）"><el-input-number v-model="form.cycle_mid" :min="1" :max="365" /> 天/次</el-form-item>
+        <el-form-item label="高风险（授信客户）"><el-input-number v-model="form.cycle_high" :min="1" :max="365" /> 天/次</el-form-item>
         <el-form-item label="低/无风险（非授信）"><el-input-number v-model="form.cycle_low" :min="1" :max="365" /> 天/次</el-form-item>
       </el-form>
     </el-card>

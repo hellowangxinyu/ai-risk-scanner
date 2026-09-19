@@ -1,6 +1,6 @@
 <template>
   <div>
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px" title="到期判定规则：授信客户固定按高风险间隔（默认 3 天）；非授信客户按上次扫描等级定间隔（高 3 天/中 7 天/低·无 30 天，可在系统配置修改）；从未扫描直接到期"
+    <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px" title="到期判定规则：授信客户=高风险档（默认 3 天），非授信客户=低风险档（默认 30 天），从未扫描直接到期；风险等级由授信状态唯一决定，与扫描结果无关"
       description="扫描只处理到期客户，未到期客户不会重复扫描" />
 
     <el-card shadow="never" style="margin-bottom:14px">
@@ -28,7 +28,7 @@
         <el-table-column label="上次扫描" width="160">
           <template #default="{ row }">{{ row.last_scan_at || '从未扫描' }}</template>
         </el-table-column>
-        <el-table-column label="上次等级" width="90">
+        <el-table-column label="风险等级" width="90">
           <template #default="{ row }">
             <el-tag v-if="row.last_risk_level" :color="LEVEL_COLORS[row.last_risk_level]" style="color:#fff;border:none">{{ row.last_risk_level }}</el-tag>
             <span v-else>-</span>

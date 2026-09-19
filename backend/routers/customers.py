@@ -70,8 +70,10 @@ def create_customer(body: CustomerBody):
     try:
         _check_unique(conn, org, name)
         cur = conn.execute(
-            "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit) VALUES(?,?,?,?,?,?,?)",
-            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(), 1 if body.is_credit else 0),
+            "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit, last_risk_level) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(),
+             1 if body.is_credit else 0, "高" if body.is_credit else "低"),
         )
         conn.commit()
         return {"id": cur.lastrowid}
@@ -93,8 +95,10 @@ def update_customer(cid: int, body: CustomerBody):
         org = _resolve_org(body.org)
         _check_unique(conn, org, name, exclude_id=cid)
         conn.execute(
-            "UPDATE customers SET org=?, name=?, ctype=?, credit_code=?, contact=?, note=?, is_credit=? WHERE id=?",
-            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(), 1 if body.is_credit else 0, cid),
+            "UPDATE customers SET org=?, name=?, ctype=?, credit_code=?, contact=?, note=?, is_credit=?, "
+            "last_risk_level=? WHERE id=?",
+            (org, name, body.ctype, body.credit_code.strip(), body.contact.strip(), body.note.strip(),
+             1 if body.is_credit else 0, "高" if body.is_credit else "低", cid),
         )
         conn.commit()
         return {"ok": True}
@@ -171,8 +175,10 @@ def _parse_rows(report: dict, rows_iter, has_header: bool):
                 report["skipped"].append({"name": fields["name"], "reason": "已存在同名客户"})
                 continue
             conn.execute(
-                "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit) VALUES(?,?,?,?,?,?,?)",
-                (org, fields["name"], fields["ctype"], fields["credit_code"], fields["contact"], fields["note"], fields["is_credit"]),
+                "INSERT INTO customers(org, name, ctype, credit_code, contact, note, is_credit, last_risk_level) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (org, fields["name"], fields["ctype"], fields["credit_code"], fields["contact"],
+                 fields["note"], fields["is_credit"], "高" if fields["is_credit"] else "低"),
             )
             seen_in_file.add(fields["name"])
             report["success"] += 1
