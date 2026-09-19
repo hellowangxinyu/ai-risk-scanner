@@ -77,7 +77,7 @@ def spa(full_path: str):
         return JSONResponse({"detail": "Not Found"}, status_code=404)
     if full_path:
         f = (DIST_DIR / full_path).resolve()
-        if f.is_file() and str(f).startswith(str(DIST_DIR)):
+        if f.is_file() and f.is_relative_to(DIST_DIR):
             return FileResponse(f)
     index = DIST_DIR / "index.html"
     if index.is_file():

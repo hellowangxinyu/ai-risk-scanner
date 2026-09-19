@@ -1,4 +1,5 @@
 """扫描执行：批次创建即运行，逐客户串行；风险记录按批次隔离，永不覆盖。"""
+import sqlite3
 import threading
 from datetime import date, datetime
 
@@ -9,11 +10,25 @@ from logic import ScanError, is_due
 LOW_CYCLE_DEFAULT = 30
 
 
+def _safe_int(v, default):
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(v, default):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _cycles(settings: dict) -> dict:
-    low = int(float(settings.get("cycle_low") or LOW_CYCLE_DEFAULT))
+    low = max(_safe_int(settings.get("cycle_low"), LOW_CYCLE_DEFAULT), 1)
     return {
-        "高": int(float(settings.get("cycle_high") or 3)),
-        "中": int(float(settings.get("cycle_mid") or 7)),
+        "高": max(_safe_int(settings.get("cycle_high"), 3), 1),
+        "中": max(_safe_int(settings.get("cycle_mid"), 7), 1),
         "低": low,
         "无": low,
     }
@@ -54,7 +69,11 @@ def has_running_batch(conn=None) -> bool:
 
 
 def start_batch(customer_ids: list, trigger: str = "手动") -> int:
-    """创建批次并立即在后台线程执行。已有运行中批次时抛 ScanError（护栏①）。"""
+    """创建批次并立即在后台线程执行。已有运行中批次时抛 ScanError（护栏①）。
+
+    并发安全：除前置检查外，数据库层有部分唯一索引兜底——两个并发请求同时
+    通过 has_running_batch() 检查时，第二个 INSERT 会触发唯一约束失败。
+    """
     if has_running_batch():
         raise ScanError("已有扫描任务在进行中，请等待完成后再发起")
     if not customer_ids:
@@ -69,18 +88,22 @@ def start_batch(customer_ids: list, trigger: str = "手动") -> int:
         if not rows:
             raise ScanError("所选客户均不存在")
         settings = db.get_settings()
-        cur = conn.execute(
-            "INSERT INTO scan_batches(total, status, price_in, price_out, price_search, trigger_type) "
-            "VALUES(?,?,?,?,?,?)",
-            (
-                len(rows),
-                "运行中",
-                float(settings.get("price_in") or 0),
-                float(settings.get("price_out") or 0),
-                float(settings.get("price_search") or 0),
-                trigger,
-            ),
-        )
+        try:
+            cur = conn.execute(
+                "INSERT INTO scan_batches(total, status, price_in, price_out, price_search, trigger_type) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    len(rows),
+                    "运行中",
+                    _safe_float(settings.get("price_in"), 0),
+                    _safe_float(settings.get("price_out"), 0),
+                    _safe_float(settings.get("price_search"), 0),
+                    trigger,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            # TOCTOU 兜底：检查通过后另一请求抢先插入了运行中批次
+            raise ScanError("已有扫描任务在进行中，请稍后再试")
         batch_id = cur.lastrowid
         for r in rows:
             conn.execute(

@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE INDEX IF NOT EXISTS idx_scan_items_batch ON scan_items(batch_id);
 CREATE INDEX IF NOT EXISTS idx_risk_records_batch ON risk_records(batch_id);
 CREATE INDEX IF NOT EXISTS idx_risk_records_customer ON risk_records(customer_id);
+-- 单并发铁律：任何时刻至多一个未完成扫描批次（数据库层硬约束，防并发竞态）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_batches_single_running
+    ON scan_batches(status) WHERE status IN ('待运行','运行中');
 """
 
 DEFAULT_SETTINGS = {

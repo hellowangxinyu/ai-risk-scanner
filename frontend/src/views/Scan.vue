@@ -9,7 +9,7 @@
           <b>选择客户</b>
           <el-button size="small" type="primary" plain @click="selectDue">勾选全部到期客户（{{ dueIds.length }}）</el-button>
           <el-button size="small" @click="$refs.table.clearSelection()">清空</el-button>
-          <el-button size="small" type="danger" :disabled="!selected.length || polling" @click="startScan">
+          <el-button size="small" type="danger" :disabled="!selected.length || polling || starting" :loading="starting" @click="startScan">
             开始扫描（已选 {{ selected.length }} 家）
           </el-button>
         </div>
@@ -83,7 +83,7 @@
         <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="viewRisks(row)">查看台账</el-button>
-            <el-button v-if="['中断', '失败'].includes(row.status)" link type="warning" @click="rescan(row)">重扫</el-button>
+            <el-button v-if="['中断', '失败'].includes(row.status)" link type="warning" :disabled="starting || polling" @click="rescan(row)">重扫</el-button>
             <el-popconfirm v-if="row.status !== '运行中' && row.status !== '待运行'" title="删除批次将级联删除其风险记录，确认？" @confirm="delBatch(row)">
               <template #reference><el-button link type="danger">删除</el-button></template>
             </el-popconfirm>
@@ -112,6 +112,7 @@ const runBatch = ref({})
 const progress = ref({ total: 0, done: 0, failed: 0, risk_count: 0, tokens_in: 0, tokens_out: 0, est_cost: 0, current: '' })
 const batches = ref([])
 const batchesLoading = ref(false)
+const starting = ref(false)
 let timer = null
 
 const polling = computed(() => running.value)
@@ -156,13 +157,16 @@ function selectDue() {
 
 async function startScan() {
   const ids = selected.value.map((r) => r.id)
-  if (!ids.length) return
+  if (!ids.length || starting.value) return
+  starting.value = true  // 点击即禁：响应返回前不允许重复发起
   try {
     const r = await api.post('/api/scan/start', { customer_ids: ids })
     ElMessage.success(`批次 #${r.batch_id} 已开始`)
     beginPolling(r.batch_id)
   } catch (e) {
     ElMessage.error(e.message)
+  } finally {
+    starting.value = false
   }
 }
 
@@ -208,12 +212,16 @@ function viewRisks(row) {
 }
 
 async function rescan(row) {
+  if (starting.value) return
+  starting.value = true
   try {
     const r = await api.post(`/api/scan/batches/${row.id}/rescan`)
     ElMessage.success(`已按原客户清单（${r.count} 家）发起新批次 #${r.batch_id}`)
     beginPolling(r.batch_id)
   } catch (e) {
     ElMessage.error(e.message)
+  } finally {
+    starting.value = false
   }
 }
 

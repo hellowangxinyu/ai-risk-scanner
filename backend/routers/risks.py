@@ -127,9 +127,19 @@ def export_risks(
     finally:
         conn.close()
     buf = _build_workbook(records)
-    filename = urllib.parse.quote(
-        f"风险台账-{date}.xlsx" if date else "风险台账-全部历史.xlsx"
-    )
+    if date:
+        base = f"风险台账-{date}"
+    elif full:
+        base = "风险台账-全部历史"
+    elif view == "customer_latest":
+        base = "风险台账-每客户最新状态"
+    elif view == "latest_batch" and batch_id:
+        base = f"风险台账-批次{batch_id}"
+    elif view == "latest_batch":
+        base = "风险台账-最新批次"
+    else:
+        base = "风险台账"
+    filename = urllib.parse.quote(f"{base}.xlsx")
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

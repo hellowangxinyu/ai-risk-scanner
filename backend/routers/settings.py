@@ -1,4 +1,5 @@
 """系统配置：AI 接口、联网搜索、扫描周期、自动扫描、可配单价、余额与模型列表、用量统计。"""
+import re
 import time
 
 import httpx
@@ -20,6 +21,38 @@ EDITABLE_KEYS = {
     "price_in", "price_out", "price_search",
     "datasource",
 }
+
+
+def _coerce_value(key: str, raw) -> str:
+    """校验并规范化设置值；非法值抛 ValueError（save 时跳过该项并上报）。"""
+    s = str(raw).strip()
+    if key in ("cycle_high", "cycle_mid", "cycle_low"):
+        v = int(float(s))
+        if not 1 <= v <= 365:
+            raise ValueError("周期须为 1-365 的整数")
+        return str(v)
+    if key in ("price_in", "price_out", "price_search"):
+        v = float(s)
+        if v < 0:
+            raise ValueError("单价不能为负")
+        return str(v)
+    if key in ("search_enabled", "auto_scan_enabled"):
+        return "1" if s in ("1", "true", "True") else "0"
+    if key == "auto_scan_time":
+        if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", s):
+            raise ValueError("扫描时刻格式应为 HH:MM")
+        return s
+    if key == "search_provider":
+        if s not in ("deepseek", "bocha"):
+            raise ValueError("搜索提供方只支持 deepseek/bocha")
+        return s
+    if key == "datasource":
+        if s not in ("llm", "mcp"):
+            raise ValueError("数据源只支持 llm/mcp")
+        return s
+    if key == "default_org":
+        return s or "本公司"
+    return s
 
 
 def _base_without_v1(settings: dict) -> str:
@@ -58,10 +91,17 @@ def get_all():
 
 @router.post("")
 def save(body: SettingsBody):
-    values = {k: str(v) for k, v in body.values.items() if k in EDITABLE_KEYS}
+    values, rejected = {}, []
+    for k, v in body.values.items():
+        if k not in EDITABLE_KEYS:
+            continue
+        try:
+            values[k] = _coerce_value(k, v)
+        except (ValueError, TypeError):
+            rejected.append(k)
     if values:
         db.update_settings(values)
-    return {"ok": True, "updated": list(values.keys())}
+    return {"ok": True, "updated": list(values.keys()), "rejected": rejected}
 
 
 @router.post("/test-ai")

@@ -40,12 +40,14 @@ class AutoScanScheduler(threading.Thread):
 
         if has_running_batch():
             return
-        # 先记账再执行，避免执行期间重复触发
-        db.update_settings({"last_auto_scan_date": now.strftime("%Y-%m-%d")})
         ids = due_customer_ids()
         if not ids:
+            # 当天没人到期：记一次账，避免当天反复空跑判断
+            db.update_settings({"last_auto_scan_date": now.strftime("%Y-%m-%d")})
             return
         try:
             start_batch(ids, trigger="自动")
-        except Exception:  # noqa: BLE001 护栏冲突等，下个 tick 再试
+            # 记账晚于执行：启动成功才记账；因竞态/护栏失败时下个 tick 会再试
+            db.update_settings({"last_auto_scan_date": now.strftime("%Y-%m-%d")})
+        except Exception:  # noqa: BLE001 下个 tick 再试
             traceback.print_exc()
