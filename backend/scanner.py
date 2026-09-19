@@ -206,7 +206,9 @@ def _persist_item(batch_id: int, item, result: dict, settings: dict):
                 result.get("fail_reason", ""),
                 int(result.get("tokens_in") or 0),
                 int(result.get("tokens_out") or 0),
-                1 if result.get("searched") else 0,
+                # searched 列语义 = 按次计费的联网搜索数（博查）；
+                # DeepSeek 原生搜索的成本体现在 Token 用量中，不计入搜索次数
+                1 if (result.get("searched") and result.get("search_paid")) else 0,
                 result.get("mode", ""),
                 result.get("summary", ""),
                 item["id"],

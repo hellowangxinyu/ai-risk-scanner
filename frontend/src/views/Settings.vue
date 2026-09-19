@@ -15,27 +15,55 @@
       <el-form label-width="130px">
         <el-form-item label="Base URL"><el-input v-model="form.ai_base_url" placeholder="https://api.deepseek.com/v1" /></el-form-item>
         <el-form-item label="API Key"><el-input v-model="form.ai_api_key" type="password" show-password placeholder="sk-..." /></el-form-item>
-        <el-form-item label="模型名称"><el-input v-model="form.ai_model" placeholder="deepseek-chat" /></el-form-item>
+        <el-form-item label="模型名称">
+          <el-select v-model="form.ai_model" filterable allow-create default-first-option placeholder="deepseek-flash" style="width: 240px">
+            <el-option v-for="m in modelOptions" :key="m" :value="m" :label="m" />
+          </el-select>
+          <el-button style="margin-left: 10px" :loading="loadingModels" @click="fetchModels">获取模型列表</el-button>
+          <el-link type="primary" href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing" target="_blank" style="margin-left: 10px">官方价格</el-link>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="testingAI" @click="testAI">测试 AI 连接</el-button>
+          <el-button :loading="loadingBalance" @click="fetchBalance">查询账户余额</el-button>
           <span v-if="aiResult" :style="{ color: aiResult.ok ? 'var(--el-color-success)' : 'var(--el-color-danger)', marginLeft: '10px' }">
             {{ aiResult.message }}（{{ aiResult.latency_ms }}ms）
           </span>
+        </el-form-item>
+        <el-form-item v-if="balance">
+          <el-alert :type="balance.is_available ? 'success' : 'warning'" :closable="false" style="width: 100%">
+            <div v-for="(b, i) in balance.balances" :key="i">
+              {{ b.currency }}　总额 ¥{{ b.total_balance }}（赠金 ¥{{ b.granted_balance }} / 充值 ¥{{ b.topped_up_balance }}）
+            </div>
+            <div v-if="!balance.is_available" style="color: var(--el-color-warning)">账户余额不足，请及时充值</div>
+          </el-alert>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" style="margin-bottom:14px">
-      <template #header><b>联网搜索（博查 Web Search，可选）</b></template>
+      <template #header><b>联网搜索（可选）</b></template>
       <el-form label-width="130px">
         <el-form-item label="启用联网搜索">
           <el-switch v-model="form.search_enabled" active-value="1" inactive-value="0" />
-          <span style="margin-left:10px;color:#909399;font-size:12px">每客户检索 1 次（约 ¥0.036/次）；失败自动降级为纯模型知识</span>
         </el-form-item>
-        <el-form-item label="博查 API Key"><el-input v-model="form.search_api_key" type="password" show-password placeholder="sk-..." /></el-form-item>
+        <el-form-item label="搜索提供方">
+          <el-radio-group v-model="form.search_provider">
+            <el-radio value="deepseek">DeepSeek 原生搜索（推荐）</el-radio>
+            <el-radio value="bocha">博查搜索</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.search_provider === 'deepseek'">
+          <span style="color:#909399;font-size:12px">复用上方 AI API Key，无需额外账号；每次搜索由 DeepSeek 在完整模型轮次中执行（消耗模型 Token，无单次搜索费）</span>
+        </el-form-item>
+        <el-form-item v-if="form.search_provider === 'bocha'" label="博查 API Key">
+          <el-input v-model="form.search_api_key" type="password" show-password placeholder="sk-..." />
+        </el-form-item>
         <el-form-item>
           <el-button :loading="testingSearch" @click="testSearch">测试搜索连接</el-button>
           <span v-if="searchResult" :style="{ color: searchResult.ok ? 'var(--el-color-success)' : 'var(--el-color-danger)', marginLeft: '10px' }">{{ searchResult.message }}</span>
+        </el-form-item>
+        <el-form-item>
+          <span style="color:#909399;font-size:12px">每客户检索 1 次；搜索失败自动降级为纯模型知识并在来源中注明</span>
         </el-form-item>
       </el-form>
     </el-card>
@@ -94,10 +122,10 @@ import { api, fmtMoney, fmtNum } from '../api'
 const form = ref({
   default_org: '本公司',
   ai_base_url: '', ai_api_key: '', ai_model: '',
-  search_enabled: '0', search_api_key: '',
+  search_enabled: '0', search_provider: 'deepseek', search_api_key: '',
   cycle_high: 3, cycle_mid: 7, cycle_low: 30,
   auto_scan_enabled: '0', auto_scan_time: '02:00',
-  price_in: 4, price_out: 9, price_search: 0.036,
+  price_in: 2, price_out: 8, price_search: 0.036,
 })
 const usage = ref({ batches: 0, tokens_in: 0, tokens_out: 0, searches: 0, est_cost: 0 })
 const testingAI = ref(false)
@@ -105,6 +133,10 @@ const testingSearch = ref(false)
 const saving = ref(false)
 const aiResult = ref(null)
 const searchResult = ref(null)
+const modelOptions = ref([])
+const loadingModels = ref(false)
+const balance = ref(null)
+const loadingBalance = ref(false)
 
 async function load() {
   try {
@@ -113,7 +145,7 @@ async function load() {
     form.value = {
       default_org: s.default_org || '本公司',
       ai_base_url: s.ai_base_url, ai_api_key: s.ai_api_key, ai_model: s.ai_model,
-      search_enabled: s.search_enabled, search_api_key: s.search_api_key,
+      search_enabled: s.search_enabled, search_provider: s.search_provider || 'deepseek', search_api_key: s.search_api_key,
       cycle_high: Number(s.cycle_high), cycle_mid: Number(s.cycle_mid), cycle_low: Number(s.cycle_low),
       auto_scan_enabled: s.auto_scan_enabled, auto_scan_time: s.auto_scan_time,
       price_in: Number(s.price_in), price_out: Number(s.price_out), price_search: Number(s.price_search),
@@ -159,6 +191,42 @@ async function testSearch() {
     searchResult.value = { ok: false, message: e.message }
   } finally {
     testingSearch.value = false
+  }
+}
+
+async function fetchModels() {
+  loadingModels.value = true
+  try {
+    await api.post('/api/settings', { values: form.value })
+    const r = await api.post('/api/settings/models')
+    if (r.ok) {
+      modelOptions.value = r.models
+      ElMessage.success(`获取到 ${r.models.length} 个模型`)
+    } else {
+      ElMessage.error(r.message)
+    }
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+async function fetchBalance() {
+  loadingBalance.value = true
+  balance.value = null
+  try {
+    await api.post('/api/settings', { values: form.value })
+    const r = await api.post('/api/settings/balance')
+    if (r.ok) {
+      balance.value = r
+    } else {
+      ElMessage.error(r.message)
+    }
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    loadingBalance.value = false
   }
 }
 

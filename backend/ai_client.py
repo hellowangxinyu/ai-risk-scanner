@@ -82,7 +82,7 @@ def _post_chat(settings: dict, messages, use_json_mode: bool, timeout: float = T
     return r
 
 
-def normalize_assessment(parsed: dict, model: str, searched: bool) -> dict:
+def normalize_assessment(parsed: dict, model: str, searched: bool, search_label: str = "") -> dict:
     risks = []
     for item in (parsed.get("risks") or []):
         if not isinstance(item, dict):
@@ -106,8 +106,9 @@ def normalize_assessment(parsed: dict, model: str, searched: bool) -> dict:
                 "source": str(item.get("source") or "").strip(),
             }
         )
+    label = search_label or "联网搜索"
     mode = (
-        "AI 检索（联网搜索 + 大模型分析，仅供参考）"
+        f"AI 检索（{label} + 大模型分析，仅供参考）"
         if searched
         else f"AI 分析（{model} 知识，仅供参考）"
     )
@@ -119,10 +120,16 @@ def normalize_assessment(parsed: dict, model: str, searched: bool) -> dict:
     }
 
 
-def assess_customer(settings: dict, customer: dict, search_results: list, searched: bool) -> dict:
-    """调大模型评估单个客户。失败（网络/HTTP/解析）整体重试一次，仍失败抛 ScanError。"""
+def assess_customer(settings: dict, customer: dict, search_results: list, searched: bool,
+                    usage_extra: tuple = (0, 0), search_label: str = "") -> dict:
+    """调大模型评估单个客户。失败（网络/HTTP/解析）整体重试一次，仍失败抛 ScanError。
+
+    usage_extra：联网搜索轮次消耗的 Token（DeepSeek 原生搜索按模型轮次计费），
+    会并入该客户的 Token 统计与费用估算。
+    """
     messages = build_messages(customer, search_results, searched)
     model = settings.get("ai_model") or "deepseek-chat"
+    label = search_label or "联网搜索"
     last_err = None
     for attempt in range(2):
         try:
@@ -133,9 +140,9 @@ def assess_customer(settings: dict, customer: dict, search_results: list, search
             content = data["choices"][0]["message"]["content"]
             usage = data.get("usage") or {}
             parsed = extract_json(content)
-            result = normalize_assessment(parsed, model, searched)
-            result["tokens_in"] = int(usage.get("prompt_tokens") or 0)
-            result["tokens_out"] = int(usage.get("completion_tokens") or 0)
+            result = normalize_assessment(parsed, model, searched, label)
+            result["tokens_in"] = int(usage.get("prompt_tokens") or 0) + int(usage_extra[0])
+            result["tokens_out"] = int(usage.get("completion_tokens") or 0) + int(usage_extra[1])
             result["searched"] = searched
             result["outcome"] = "有风险" if result["has_risk"] else "无风险"
             return result
