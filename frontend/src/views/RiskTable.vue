@@ -25,24 +25,40 @@
       <el-button type="success" @click="exportByDate">按日期导出</el-button>
       <el-button type="success" plain @click="exportAll">导出全部历史</el-button>
       <el-button link type="primary" @click="exportExcel">导出当前筛选</el-button>
+      <span style="margin-left:auto;color:#909399;font-size:12px">按客户分组显示</span>
     </div>
 
-    <el-table v-if="view !== 'lifecycle'" :data="items" v-loading="loading" border stripe>
-      <el-table-column prop="customer_name" label="客户名称" min-width="170" show-overflow-tooltip />
-      <el-table-column label="风险类型" width="100">
-        <template #default="{ row }"><el-tag effect="plain">{{ row.risk_type }}</el-tag></template>
-      </el-table-column>
-      <el-table-column label="风险等级" width="90">
-        <template #default="{ row }">
-          <el-tag :color="LEVEL_COLORS[row.level]" style="color:#fff;border:none">{{ row.level }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="title" label="风险标题" min-width="160" show-overflow-tooltip />
-      <el-table-column prop="description" label="风险描述" min-width="280" show-overflow-tooltip />
-      <el-table-column prop="risk_date" label="风险日期" width="100" />
-      <el-table-column prop="source" label="信息来源" min-width="150" show-overflow-tooltip />
-      <el-table-column prop="scan_date" label="扫描日期" width="160" />
-    </el-table>
+    <!-- 非生命周期视图：按客户分组显示 -->
+    <div v-if="view !== 'lifecycle'" v-loading="loading">
+      <template v-if="groups.length">
+        <el-card v-for="g in groups" :key="g.customer_id || g.customer_name" shadow="never" style="margin-bottom:16px">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:12px">
+              <b style="font-size:15px">{{ g.customer_name }}</b>
+              <el-tag size="small" effect="plain">{{ g.risks.length }} 条风险</el-tag>
+            </div>
+          </template>
+          <el-table :data="g.risks" border size="small">
+            <el-table-column label="风险类型" width="100">
+              <template #default="{ row }"><el-tag effect="plain">{{ row.risk_type }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="风险等级" width="90">
+              <template #default="{ row }">
+                <el-tag :color="LEVEL_COLORS[row.level]" style="color:#fff;border:none">{{ row.level }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="title" label="风险标题" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="description" label="风险描述" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="risk_date" label="风险日期" width="100" />
+            <el-table-column prop="source" label="信息来源" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="scan_date" label="扫描日期" width="160" />
+          </el-table>
+        </el-card>
+      </template>
+      <el-empty v-else-if="!loading" :description="emptyText" />
+    </div>
+
+    <!-- 生命周期视图：去重清单 -->
     <el-table v-else :data="items" v-loading="loading" border stripe>
       <el-table-column prop="customer_name" label="客户名称" min-width="170" show-overflow-tooltip />
       <el-table-column label="风险类型" width="100">
@@ -90,6 +106,7 @@ const items = ref([])
 const total = ref(0)
 const batches = ref([])
 const loading = ref(false)
+const groups = ref([])
 
 const emptyText = computed(() =>
   view.value === 'lifecycle'
@@ -113,7 +130,13 @@ async function load(p) {
       page_size: pageSize.value,
     })
     const r = await api.get(`/api/risks?${params}`)
-    items.value = r.items
+    if (view.value === 'lifecycle') {
+      items.value = r.items || []
+      groups.value = []
+    } else {
+      groups.value = r.grouped || []
+      items.value = r.grouped ? r.grouped.flatMap((g) => g.risks) : []
+    }
     total.value = r.total
   } catch (e) {
     ElMessage.error(e.message)

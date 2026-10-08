@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="toolbar">
-      <el-input v-model="query" placeholder="搜索名称/联系人/信用代码" clearable style="width: 260px" @keyup.enter="load(1)" @clear="load(1)" />
+      <el-input v-model="query" placeholder="输入客户名称精确查询" clearable style="width: 260px" @keyup.enter="load(1)" @clear="load(1)" />
       <el-button type="primary" @click="load(1)">搜索</el-button>
       <el-button type="success" @click="openEdit(null)">新增客户</el-button>
       <el-dropdown @command="importCommand" style="margin-left:12px">

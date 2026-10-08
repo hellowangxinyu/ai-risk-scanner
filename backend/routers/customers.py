@@ -44,12 +44,9 @@ def _check_unique(conn, org: str, name: str, exclude_id: int = 0):
 def list_customers(query: str = "", page: int = 1, page_size: int = 20):
     items = list_customers_with_due()
     if query.strip():
+        # 客户名称精确匹配（去掉首尾空格后完全相等）
         q = query.strip()
-        items = [
-            c
-            for c in items
-            if q in c["name"] or q in c["contact"] or q in c["credit_code"]
-        ]
+        items = [c for c in items if c["name"] == q]
     total = len(items)
     page = max(page, 1)
     page_size = max(min(page_size, 200), 1)

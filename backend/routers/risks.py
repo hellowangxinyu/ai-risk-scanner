@@ -225,8 +225,17 @@ def list_risks(
     total = len(records)
     page, page_size = max(page, 1), max(min(page_size, 200), 1)
     start = (page - 1) * page_size
+    page_records = records[start : start + page_size]
+    # 按客户分组：一个客户一个组，组内保留等级排序
+    groups, order = {}, []
+    for r in page_records:
+        cid = r["customer_id"] if r["customer_id"] is not None else r["customer_name"]
+        if cid not in groups:
+            groups[cid] = {"customer_id": r["customer_id"], "customer_name": r["customer_name"], "risks": []}
+            order.append(cid)
+        groups[cid]["risks"].append(r)
     return {
         "total": total,
-        "items": records[start : start + page_size],
+        "grouped": [groups[cid] for cid in order],
         "batch": used_batch,
     }
