@@ -80,10 +80,9 @@
         </template>
       </el-table-column>
     </el-table>
+
     <el-pagination style="margin-top:14px;justify-content:flex-end" background layout="total, prev, pager, next"
       :total="total" v-model:current-page="page" :page-size="pageSize" @current-change="load()" />
-
-    <el-empty v-if="!loading && !items.length" :description="emptyText" />
   </div>
 </template>
 
