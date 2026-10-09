@@ -14,7 +14,7 @@
           </el-button>
         </div>
       </template>
-      <el-table ref="table" :data="customers" v-loading="loading" border max-height="420"
+      <el-table ref="table" :data="customers" v-loading="loading" border max-height="460"
         @selection-change="(rows) => (selected = rows)">
         <el-table-column type="selection" width="45" :selectable="(row) => !polling" />
         <el-table-column prop="name" label="客户名称" min-width="180" show-overflow-tooltip />
@@ -41,6 +41,12 @@
           </template>
         </el-table-column>
       </el-table>
+      <div style="display:flex;align-items:center;margin-top:12px;flex-wrap:wrap;gap:12px">
+        <el-pagination background layout="total, sizes, prev, pager, next, jumper"
+          :total="custTotal" v-model:current-page="custPage" v-model:page-size="custPageSize"
+          :page-sizes="[20, 50, 100, 200]" @current-change="loadCustomers()" @size-change="loadCustomers(1)" />
+        <span style="color:#909399;font-size:12px;margin-left:auto">当前页已选 {{ selected.length }} 家</span>
+      </div>
     </el-card>
 
     <el-card v-if="running" shadow="never" style="margin-bottom:14px">
@@ -106,6 +112,9 @@ const dueIds = ref([])
 const selected = ref([])
 const loading = ref(false)
 const table = ref(null)
+const custTotal = ref(0)
+const custPage = ref(1)
+const custPageSize = ref(20)
 
 const running = ref(false)
 const runBatch = ref({})
@@ -124,11 +133,13 @@ function statusTag(s) {
   return 'danger'
 }
 
-async function loadCustomers() {
+async function loadCustomers(p) {
+  if (p) custPage.value = p
   loading.value = true
   try {
-    const r = await api.get('/api/customers?page=1&page_size=200')
+    const r = await api.get(`/api/scan/customers?page=${custPage.value}&page_size=${custPageSize.value}`)
     customers.value = r.items
+    custTotal.value = r.total
     const d = await api.get('/api/scan/due-preview')
     dueIds.value = d.due_ids
   } catch (e) {

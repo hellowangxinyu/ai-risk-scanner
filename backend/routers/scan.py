@@ -122,3 +122,19 @@ def due_preview():
     items = list_customers_with_due()
     due = [c["id"] for c in items if c["due"]]
     return {"due_ids": due, "due_count": len(due)}
+
+
+@router.get("/customers")
+def scan_customers(query: str = "", due: str = "", page: int = 1, page_size: int = 20):
+    """扫描页客户列表（分页 + 筛选）：due=1 只看到期、due=0 只看未到期、空=全部。"""
+    items = list_customers_with_due()
+    if query.strip():
+        q = query.strip()
+        items = [c for c in items if c["name"] == q]
+    if due in ("0", "1"):
+        want = due == "1"
+        items = [c for c in items if c["due"] is want]
+    total = len(items)
+    page, page_size = max(page, 1), max(min(page_size, 200), 1)
+    start = (page - 1) * page_size
+    return {"total": total, "items": items[start : start + page_size]}
