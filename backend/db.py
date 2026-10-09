@@ -73,6 +73,78 @@ CREATE INDEX IF NOT EXISTS idx_risk_records_customer ON risk_records(customer_id
 -- 单并发铁律：任何时刻至多一个未完成扫描批次（数据库层硬约束，防并发竞态）
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_batches_single_running
     ON scan_batches(status) WHERE status IN ('待运行','运行中');
+-- 每日风险报告（扫描完成自动生成）
+CREATE TABLE IF NOT EXISTS risk_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id INTEGER NOT NULL,
+    report_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    title TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    total_customers INTEGER NOT NULL DEFAULT 0,
+    risk_customers INTEGER NOT NULL DEFAULT 0,
+    high_count INTEGER NOT NULL DEFAULT 0,
+    mid_count INTEGER NOT NULL DEFAULT 0,
+    low_count INTEGER NOT NULL DEFAULT 0,
+    risk_lines INTEGER NOT NULL DEFAULT 0,
+    new_risk_lines INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL DEFAULT '{}',
+    push_status TEXT NOT NULL DEFAULT '未推送',
+    push_channel TEXT NOT NULL DEFAULT ''
+);
+-- 智能中台：外部数据源（多源数据采集，SQLite/MySQL/PostgreSQL）
+CREATE TABLE IF NOT EXISTS data_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    dstype TEXT NOT NULL DEFAULT 'sqlite',
+    config TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_sync_at TEXT NOT NULL DEFAULT '',
+    last_status TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- 智能中台：数据集定义（SELECT 查询，把外部数据接入为客户/指标）
+CREATE TABLE IF NOT EXISTS data_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    query TEXT NOT NULL DEFAULT '',
+    mapping TEXT NOT NULL DEFAULT '{}',
+    kind TEXT NOT NULL DEFAULT '客户名单',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- 智能中台：自定义风控规则（规则引擎）
+CREATE TABLE IF NOT EXISTS risk_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '客户',
+    field TEXT NOT NULL DEFAULT '',
+    op TEXT NOT NULL DEFAULT 'contains',
+    value TEXT NOT NULL DEFAULT '',
+    level TEXT NOT NULL DEFAULT '中',
+    risk_type TEXT NOT NULL DEFAULT '其他',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- 智能中台：用户与角色（权限隔离）
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- 智能中台：平台运行日志（运维监控）
+CREATE TABLE IF NOT EXISTS platform_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level TEXT NOT NULL DEFAULT 'INFO',
+    event TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_platform_logs_time ON platform_logs(created_at);
 """
 
 DEFAULT_SETTINGS = {
@@ -91,6 +163,8 @@ DEFAULT_SETTINGS = {
     "price_in": "2",
     "price_out": "8",
     "price_search": "0.036",
+    "report_push_channel": "",
+    "report_push_webhook": "",
     "datasource": "llm",
     "last_auto_scan_date": "",
 }

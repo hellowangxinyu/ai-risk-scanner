@@ -15,7 +15,7 @@ from auth import (
     make_token,
 )
 from db import init_db, mark_interrupted
-from routers import customers, risks, scan, settings as settings_router
+from routers import customers, hub, reports, risks, scan, settings as settings_router
 from scheduler import AutoScanScheduler
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -31,6 +31,8 @@ async def lifespan(app: FastAPI):
     n = mark_interrupted()  # 中断恢复：遗留"运行中"批次标记为"中断"
     if n:
         print(f"[startup] 已将 {n} 个遗留批次标记为中断")
+    from platform_hub import log_event
+    log_event("服务启动", "AI 财务风控系统已启动")
     scheduler.start()
     yield
     scheduler.stop()
@@ -41,6 +43,8 @@ app.add_middleware(AuthMiddleware)
 app.include_router(customers.router)
 app.include_router(scan.router)
 app.include_router(risks.router)
+app.include_router(reports.router)
+app.include_router(hub.router)
 app.include_router(settings_router.router)
 
 

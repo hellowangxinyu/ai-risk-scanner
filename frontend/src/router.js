@@ -12,6 +12,8 @@ const routes = [
       { path: 'customers', name: 'customers', component: () => import('./views/Customers.vue'), meta: { title: '客户管理' } },
       { path: 'scan', name: 'scan', component: () => import('./views/Scan.vue'), meta: { title: '风险扫描' } },
       { path: 'risks', name: 'risks', component: () => import('./views/RiskTable.vue'), meta: { title: '风险台账' } },
+      { path: 'reports', name: 'reports', component: () => import('./views/Reports.vue'), meta: { title: '风险报告' } },
+      { path: 'hub', name: 'hub', component: () => import('./views/Hub.vue'), meta: { title: '智能中台' } },
       { path: 'settings', name: 'settings', component: () => import('./views/Settings.vue'), meta: { title: '系统配置' } },
     ],
   },

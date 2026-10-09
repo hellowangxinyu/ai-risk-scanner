@@ -6,6 +6,8 @@
         <el-menu-item index="/customers"><el-icon><User /></el-icon>客户管理</el-menu-item>
         <el-menu-item index="/scan"><el-icon><Search /></el-icon>风险扫描</el-menu-item>
         <el-menu-item index="/risks"><el-icon><Warning /></el-icon>风险台账</el-menu-item>
+        <el-menu-item index="/reports"><el-icon><Document /></el-icon>风险报告</el-menu-item>
+        <el-menu-item index="/hub"><el-icon><Platform /></el-icon>智能中台</el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting /></el-icon>系统配置</el-menu-item>
       </el-menu>
     </el-aside>

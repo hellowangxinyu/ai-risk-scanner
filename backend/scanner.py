@@ -166,6 +166,50 @@ def _run_batch(batch_id: int):
     finally:
         conn.close()
 
+    # 批次完成时自动生成每日风险报告（推送渠道预留）
+    if status == "完成":
+        try:
+            import report
+            rid = report.generate_report(batch_id)
+            if rid:
+                print(f"[report] 已生成风险报告 #{rid}（批次 #{batch_id}）")
+        except Exception as e:  # noqa: BLE001 报告失败不影响扫描结果
+            print(f"[report] 生成风险报告失败：{e}")
+        # 规则引擎：对命中规则的客户追加规则风险项（不用 AI 的本地判定）
+        try:
+            import platform_hub as hub
+            conn = db.connect()
+            try:
+                rules = [dict(r) for r in conn.execute(
+                    "SELECT * FROM risk_rules WHERE enabled=1 AND target='客户'").fetchall()]
+                matched = 0
+                for it in conn.execute(
+                    "SELECT si.*, c.ctype, c.credit_code, c.contact, c.note, c.is_credit "
+                    "FROM scan_items si LEFT JOIN customers c ON c.id=si.customer_id "
+                    "WHERE si.batch_id=? AND si.outcome IN ('有风险','无风险')",
+                    (batch_id,),
+                ).fetchall():
+                    cust = {"name": it["customer_name"], "ctype": it["ctype"] or "",
+                            "credit_code": it["credit_code"] or "", "contact": it["contact"] or "",
+                            "note": it["note"] or "", "is_credit": it["is_credit"] or 0}
+                    hits = hub.rule_risks_for_customer(cust, rules)
+                    for h in hits:
+                        conn.execute(
+                            "INSERT INTO risk_records(batch_id, customer_id, customer_name, risk_type, "
+                            "level, title, description, risk_date, source) VALUES(?,?,?,?,?,?,?,?,?)",
+                            (batch_id, it["customer_id"], it["customer_name"], h["risk_type"],
+                             h["level"], h["title"], h["description"], h["risk_date"], h["source"]),
+                        )
+                        matched += 1
+                conn.commit()
+                if matched:
+                    hub.log_rule_engine(batch_id, matched)
+                    print(f"[rules] 规则引擎命中 {matched} 条")
+            finally:
+                conn.close()
+        except Exception as e:  # noqa: BLE001
+            print(f"[rules] 规则引擎执行失败：{e}")
+
 
 def _failed_result(reason: str) -> dict:
     return {
